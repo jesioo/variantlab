@@ -1,0 +1,14 @@
+packages:
+  - packages/*
+  - playground
+
+# Supply chain age gate: only install releases that are at least 7 days old.
+minimumReleaseAge: 10080
+
+# One version of React and TypeScript across the library and the playground.
+catalog:
+  react: ^19.3.1
+  react-dom: ^19.3.1
+  '@types/react': ^19.3.0
+  '@types/react-dom': ^19.3.0
+  typescript: ~6.0.3
