@@ -37,4 +37,7 @@ Unit and end to end tests fail on any unexpected console error or warning.
 
 Releases go through [Changesets](https://github.com/changesets/changesets).
 Run `pnpm changeset` in every pull request that changes the published library.
-Publishing from CI is not set up yet.
+
+To release, run `pnpm changeset version` and commit the result.
+Then run `pnpm release`, which runs every check and publishes the new version to npm.
+Publishing from CI is not set up yet, so `pnpm release` needs `npm login` first.

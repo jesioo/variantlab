@@ -1,6 +1,6 @@
 {
   "name": "variantlab",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Switch between variants of a React component live in the browser.",
   "keywords": [
     "react",

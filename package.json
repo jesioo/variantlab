@@ -13,7 +13,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
-    "changeset": "changeset"
+    "changeset": "changeset",
+    "release": "pnpm check && changeset publish"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.3",
