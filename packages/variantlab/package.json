@@ -34,7 +34,8 @@
     "typecheck": "tsc --build"
   },
   "peerDependencies": {
-    "react": "^19.2.0"
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@arethetypeswrong/core": "^0.18.5",

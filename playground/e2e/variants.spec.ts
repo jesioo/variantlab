@@ -22,11 +22,25 @@ const test = base.extend<{ consoleProblems: string[] }>({
   ],
 });
 
+function launcher(page: Page) {
+  return page.getByRole('button', { name: /^Variants/ });
+}
+
+function panel(page: Page) {
+  return page.getByRole('dialog', { name: 'Variants' });
+}
+
+async function openPanel(page: Page) {
+  if (await panel(page).isVisible()) return;
+  await launcher(page).click();
+  await expect(panel(page)).toBeVisible();
+}
+
 async function selectVariant(page: Page, groupId: string, name: string) {
-  const group = page.getByRole('radiogroup', { name: groupId });
-  // The radio itself is visually hidden, so click its label like a person would.
-  await group.getByText(name, { exact: true }).click();
-  await expect(group.getByRole('radio', { name })).toBeChecked();
+  await openPanel(page);
+  const picker = panel(page).getByRole('combobox', { name: groupId });
+  await picker.selectOption(name);
+  await expect(picker).toHaveValue(name);
 }
 
 function visibleCards(page: Page) {
@@ -37,7 +51,9 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
 });
 
-test('renders the default variants while the gate is closed', async ({ page }) => {
+test('renders the default variants and hides the panel while the gate is closed', async ({
+  page,
+}) => {
   await selectVariant(page, 'pricing-card', 'compact');
   await expect(page.locator('article[data-variant="compact"]:visible')).toHaveCount(3);
 
@@ -45,21 +61,34 @@ test('renders the default variants while the gate is closed', async ({ page }) =
 
   await expect(page.locator('article[data-variant="default"]:visible')).toHaveCount(3);
   await expect(visibleCards(page)).toHaveCount(3);
+  await expect(launcher(page)).toHaveCount(0);
 });
 
-test('loads a variant chunk only once the variant is selected', async ({ page }) => {
+test('fetches variant chunks only once the panel opens', async ({ page }) => {
   const chunkRequests: string[] = [];
   page.on('request', (request) => {
-    if (/PricingCard\.compact-[\w-]+\.js$/.test(request.url())) chunkRequests.push(request.url());
+    const chunk = /\/(\w+\.\w+)-[\w-]+\.js$/.exec(request.url())?.[1];
+    if (chunk !== undefined && /\.(compact|spotlight|inline|broken)$/.test(chunk)) {
+      chunkRequests.push(chunk);
+    }
   });
-  await expect(page.locator('article[data-variant="default"]:visible')).toHaveCount(3);
+  await expect(launcher(page)).toBeVisible();
   expect(chunkRequests).toEqual([]);
 
-  await selectVariant(page, 'pricing-card', 'compact');
+  await openPanel(page);
 
+  await expect
+    .poll(() => chunkRequests.toSorted())
+    .toEqual([
+      'PricingCard.compact',
+      'PricingCard.spotlight',
+      'SignupCta.broken',
+      'SignupCta.inline',
+    ]);
+  await selectVariant(page, 'pricing-card', 'compact');
   await expect(page.locator('article[data-variant="compact"]:visible')).toHaveCount(3);
   await expect(visibleCards(page)).toHaveCount(3);
-  expect(chunkRequests).toHaveLength(1);
+  expect(chunkRequests).toHaveLength(4);
 });
 
 test('keeps the state of a variant when flipping back to it', async ({ page }) => {
@@ -85,13 +114,62 @@ test('renders the default variant in place of a variant that throws', async ({
 
   await selectVariant(page, 'signup-cta', 'broken');
 
-  await expect
-    .poll(() => consoleProblems.some((problem) => problem.includes('failed to render')))
-    .toBe(true);
+  await expect(
+    panel(page).getByText('Failed, showing the default. See the console.')
+  ).toBeVisible();
   await expect(signup).toHaveAttribute('data-variant', 'default');
   await expect(signup.getByRole('button', { name: 'Start your trial' })).toBeVisible();
   expect(consoleProblems.join('\n')).toContain(
     '[variantlab] Variant "broken" of "signup-cta" failed to render. Showing the default variant instead.'
   );
   consoleProblems.length = 0;
+});
+
+test('marks the launcher while variants are changed and resets them', async ({ page }) => {
+  await expect(launcher(page)).toHaveAccessibleName('Variants');
+
+  await selectVariant(page, 'pricing-card', 'compact');
+  await selectVariant(page, 'signup-cta', 'inline');
+  await expect(launcher(page)).toHaveAccessibleName('Variants, 2 changed');
+
+  await panel(page).getByRole('button', { name: 'Reset' }).click();
+
+  await expect(launcher(page)).toHaveAccessibleName('Variants');
+  await expect(page.locator('article[data-variant="default"]:visible')).toHaveCount(3);
+  await expect(page.getByRole('region', { name: 'Sign up' })).toHaveAttribute(
+    'data-variant',
+    'default'
+  );
+  await expect(panel(page).getByRole('button', { name: 'Reset' })).toBeDisabled();
+});
+
+test('closes like a popover', async ({ page }) => {
+  await openPanel(page);
+  await expect(panel(page).getByRole('combobox', { name: 'pricing-card' })).not.toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(panel(page)).toBeHidden();
+  await expect(launcher(page)).toBeFocused();
+
+  await openPanel(page);
+  await page.getByRole('heading', { name: 'Plans that grow with your team' }).click();
+  await expect(panel(page)).toBeHidden();
+
+  await openPanel(page);
+  await launcher(page).click();
+  await expect(panel(page)).toBeHidden();
+});
+
+test('works from the keyboard', async ({ page }) => {
+  await launcher(page).focus();
+  await page.keyboard.press('Enter');
+  await expect(panel(page)).toBeVisible();
+
+  const pricing = panel(page).getByRole('combobox', { name: 'pricing-card' });
+  await expect(pricing).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(panel(page).getByRole('combobox', { name: 'signup-cta' })).toBeFocused();
+  await page.keyboard.press('Escape');
+
+  await expect(panel(page)).toBeHidden();
+  await expect(launcher(page)).toBeFocused();
 });

@@ -1,28 +1,18 @@
 import { useState } from 'react';
 import { VariantsProvider } from 'variantlab';
-import type { VariantSelection } from 'variantlab';
 
 import { PlaygroundControls } from './PlaygroundControls';
 import { plans } from './pricing/plans';
 import { PricingCard } from './pricing/PricingCard';
 import { SignupCta } from './signup/SignupCta';
 
-const groups = [PricingCard, SignupCta];
-
 export function App() {
   const [enabled, setEnabled] = useState(true);
-  const [selection, setSelection] = useState<VariantSelection>({});
 
   return (
     <>
-      <PlaygroundControls
-        groups={groups}
-        enabled={enabled}
-        onEnabledChange={setEnabled}
-        selection={selection}
-        onSelectionChange={setSelection}
-      />
-      <VariantsProvider enabled={enabled} selection={selection}>
+      <PlaygroundControls enabled={enabled} onEnabledChange={setEnabled} />
+      <VariantsProvider enabled={enabled}>
         <main className="mx-auto max-w-5xl px-4 py-16 sm:px-6">
           <header className="max-w-2xl">
             <h1 className="text-3xl font-semibold tracking-tight text-balance text-zinc-950 sm:text-4xl">

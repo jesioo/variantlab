@@ -215,21 +215,28 @@ describe('variants', () => {
     consoleError.mockReset();
   });
 
-  it('stays on the current variant when a variant fails to load', async () => {
+  it('renders the default variant in place of a variant that fails to load', async () => {
     const consoleError = vi.mocked(console.error).mockImplementation(() => undefined);
-    const compact = deferred<{ default: typeof CompactCard }>();
-    const Card = variants('card', { default: DefaultCard, compact: () => compact.promise });
+    const dense = deferred<{ default: typeof DenseCard }>();
+    const Card = variants('card', {
+      default: DefaultCard,
+      compact: () => Promise.resolve({ default: CompactCard }),
+      dense: () => dense.promise,
+    });
 
-    renderInProvider(<Card label="a" />, { card: 'compact' });
+    const view = renderInProvider(<Card label="a" />, { card: 'compact' });
+    await screen.findByText('compact a');
+    view.select({ card: 'dense' });
     const chunkError = new Error('Chunk failed');
     await act(async () => {
-      compact.reject(chunkError);
-      await compact.promise.catch(() => undefined);
+      dense.reject(chunkError);
+      await dense.promise.catch(() => undefined);
     });
 
     expect(screen.getByText('default a')).toBeVisible();
+    expect(screen.getByText('compact a')).not.toBeVisible();
     expect(consoleError).toHaveBeenCalledWith(
-      '[variantlab] Variant "compact" of "card" failed to load.',
+      '[variantlab] Variant "dense" of "card" failed to load.',
       chunkError
     );
     consoleError.mockReset();

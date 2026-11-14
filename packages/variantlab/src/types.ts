@@ -15,3 +15,6 @@ export type VariantLoader<P> = () => Promise<VariantModule<P> | ComponentType<P>
 
 /** The selected variant name of each variants group, keyed by group id. */
 export type VariantSelection = Readonly<Record<string, string>>;
+
+/** The corner of the viewport that holds the variants panel button. */
+export type VariantsPanelPosition = 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right';

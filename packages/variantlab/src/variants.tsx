@@ -1,20 +1,18 @@
 import {
   Activity,
-  Component,
   createElement,
   useContext,
   useEffect,
   useState,
   useSyncExternalStore,
 } from 'react';
-import type { ComponentType, ErrorInfo, FunctionComponent, ReactNode } from 'react';
+import type { ComponentType, FunctionComponent, ReactNode } from 'react';
 
 import { VariantsContext } from './context';
-import { createLoadableVariants } from './loadable';
-import type { LoadableVariants } from './loadable';
+import { ErrorBoundary } from './error-boundary';
+import { createVariantGroup, DEFAULT_VARIANT } from './group';
+import type { GroupRegistry } from './registry';
 import type { VariantLoader } from './types';
-
-const DEFAULT_VARIANT = 'default';
 
 /** The props of a definition's default variant. Every other variant has to accept them too. */
 export type VariantsProps<D> = D extends { readonly default: ComponentType<infer P> } ? P : never;
@@ -77,41 +75,59 @@ function createVariants<P>(
   Default: ComponentType<P>,
   loaders: Readonly<Record<string, VariantLoader<P>>>
 ): VariantsComponent<P> {
-  const loadable: LoadableVariants<P> = createLoadableVariants(id, loaders);
+  const group = createVariantGroup(id, loaders);
+  const { loadable } = group;
   const renderDefault = (props: P): ReactNode =>
     createElement(Default as ComponentType<object>, props as object);
 
   function LoadedVariant({ name, props }: { readonly name: string; readonly props: P }): ReactNode {
     return (
-      <VariantErrorBoundary groupId={id} variant={name} fallback={renderDefault(props)}>
+      <ErrorBoundary
+        fallback={renderDefault(props)}
+        onError={(error, info) => {
+          console.error(
+            `[variantlab] Variant "${name}" of "${id}" failed to render. Showing the default variant instead.`,
+            error,
+            info.componentStack
+          );
+          group.reportRenderFailure(name);
+        }}
+      >
         {createElement(loadable.getComponent(name) as ComponentType<object>, props as object)}
-      </VariantErrorBoundary>
+      </ErrorBoundary>
     );
   }
 
   function VariantsSwitch({
     requested,
+    registry,
     props,
   }: {
     readonly requested: string;
+    readonly registry: GroupRegistry;
     readonly props: P;
   }): ReactNode {
     const getStatus = () => loadable.getStatus(requested);
     const status = useSyncExternalStore(loadable.subscribe, getStatus, getStatus);
-    const ready = requested === DEFAULT_VARIANT || status === 'loaded';
+
+    useEffect(() => registry.register(group), [registry]);
 
     useEffect(() => {
       if (requested !== DEFAULT_VARIANT && status === 'idle') loadable.load(requested);
     }, [requested, status]);
 
+    // A variant that fails to load falls back to the default one, like a variant that throws.
+    const target = status === 'failed' ? DEFAULT_VARIANT : requested;
+    const ready = target === DEFAULT_VARIANT || status === 'loaded';
+
     // The previous variant stays mounted but hidden, so flipping back keeps its state. Until the
     // requested variant has loaded, the current one stays on screen instead of a blank fallback.
     const [shown, setShown] = useState<Shown>({
-      current: ready ? requested : DEFAULT_VARIANT,
+      current: ready ? target : DEFAULT_VARIANT,
       previous: null,
     });
-    if (ready && shown.current !== requested) {
-      setShown({ current: requested, previous: shown.current });
+    if (ready && shown.current !== target) {
+      setShown({ current: target, previous: shown.current });
     }
 
     const mounted = shown.previous === null ? [shown.current] : [shown.previous, shown.current];
@@ -134,43 +150,9 @@ function createVariants<P>(
     const selected = context.selection[id];
     const requested =
       selected !== undefined && Object.hasOwn(loaders, selected) ? selected : DEFAULT_VARIANT;
-    return <VariantsSwitch requested={requested} props={props} />;
+    return <VariantsSwitch requested={requested} registry={context.registry} props={props} />;
   }
 
   Variants.displayName = `Variants(${id})`;
-  return Object.assign(Variants, {
-    variantsId: id,
-    variantNames: [DEFAULT_VARIANT, ...Object.keys(loaders)],
-  });
-}
-
-interface VariantErrorBoundaryProps {
-  readonly groupId: string;
-  readonly variant: string;
-  readonly fallback: ReactNode;
-  readonly children: ReactNode;
-}
-
-/** Keeps a broken experiment from taking the page down by rendering the default variant instead. */
-class VariantErrorBoundary extends Component<
-  VariantErrorBoundaryProps,
-  { readonly failed: boolean }
-> {
-  override state = { failed: false };
-
-  static getDerivedStateFromError(): { failed: boolean } {
-    return { failed: true };
-  }
-
-  override componentDidCatch(error: unknown, info: ErrorInfo): void {
-    console.error(
-      `[variantlab] Variant "${this.props.variant}" of "${this.props.groupId}" failed to render. Showing the default variant instead.`,
-      error,
-      info.componentStack
-    );
-  }
-
-  override render(): ReactNode {
-    return this.state.failed ? this.props.fallback : this.props.children;
-  }
+  return Object.assign(Variants, { variantsId: id, variantNames: group.variantNames });
 }

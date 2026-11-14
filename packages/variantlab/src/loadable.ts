@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react';
 
+import { createListeners } from './listeners';
 import type { VariantLoader } from './types';
 
 export type LoadStatus = 'idle' | 'loading' | 'loaded' | 'failed';
@@ -23,11 +24,11 @@ export function createLoadableVariants<P>(
   loaders: Readonly<Record<string, VariantLoader<P>>>
 ): LoadableVariants<P> {
   const entries = new Map<string, Entry<P>>();
-  const listeners = new Set<() => void>();
+  const listeners = createListeners();
 
   const settle = (name: string, entry: Entry<P>): void => {
     entries.set(name, entry);
-    for (const listener of listeners) listener();
+    listeners.notify();
   };
 
   const fail = (name: string, problem: string, ...details: unknown[]): void => {
@@ -36,12 +37,7 @@ export function createLoadableVariants<P>(
   };
 
   return {
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
+    subscribe: listeners.subscribe,
 
     getStatus(name) {
       return entries.get(name)?.status ?? 'idle';
